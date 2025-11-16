@@ -1,37 +1,54 @@
 name: CI/CD Pipeline
-
-# This runs when you push to the "main" branch
 on:
   push:
     branches: [ main ]
 
 jobs:
-  build-and-deploy:
+  ################################
+  # NEW JOB: RUN TESTS
+  ################################
+  test:
     runs-on: ubuntu-latest
     
     steps:
-    # 1. Checks out your code
     - name: Checkout code
       uses: actions/checkout@v3
 
-    # 2. Logs in to Docker Hub
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Run linter tests
+      run: npm test
+
+  ################################
+  # UPDATED JOB: BUILD AND DEPLOY
+  ################################
+  build-and-deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
     - name: Login to Docker Hub
       uses: docker/login-action@v2
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_TOKEN }}
 
-    # 3. Builds and pushes the Docker image
     - name: Build and push Docker image
       uses: docker/build-push-action@v4
       with:
         context: .
         push: true
-        # --- CHANGE THIS LINE ---
         tags: docsumangal/my-devops-app:latest  
-        # --- CHANGE THIS LINE ---
 
-    # 4. Logs into your AWS EC2 server and deploys
     - name: Deploy to EC2
       uses: appleboy/ssh-action@master
       with:
@@ -40,12 +57,7 @@ jobs:
         key: ${{ secrets.AWS_PRIVATE_KEY }}
         port: 22
         script: |
-          # Stop and remove the old container, if it exists
           docker stop my-app || true
           docker rm my-app || true
-          
-          # Pull the new image from Docker Hub
           docker pull docsumangal/my-devops-app:latest
-          
-          # Run the new container
           docker run -d --name my-app -p 8080:8080 docsumangal/my-devops-app:latest
